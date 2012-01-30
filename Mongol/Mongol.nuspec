@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>$id$</id>
+    <version>$version$</version>
+    <title>$title$</title>
+    <authors>pmarkert</authors>
+    <owners />
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Adds simple repository pattern, Record base-class, Strongly-typed property name resolution, and some useful extension methods to the official MongoDB Driver.</description>
+    <summary>Wrapper for the official MongoDB .Net Driver.</summary>
+    <releaseNotes></releaseNotes>
+    <copyright>Copyright 2012</copyright>
+    <tags>mongo mongodb</tags>
+  </metadata>
+</package>

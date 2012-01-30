@@ -1,0 +1,47 @@
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mongol", "Mongol\Mongol.csproj", "{33E95706-5A53-4070-99CC-3A0F220A720D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{C8A2FC40-65B3-4B48-AE81-E925696EED19}"
+	ProjectSection(SolutionItems) = preProject
+		Local.testsettings = Local.testsettings
+		Mongol1.vsmdi = Mongol1.vsmdi
+		TraceAndTestImpact.testsettings = TraceAndTestImpact.testsettings
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MongoDB.Linq.Tests", "MongoDB.Linq.Tests\MongoDB.Linq.Tests.csproj", "{F5F55392-516A-44A2-80AF-D79572ED1FCB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MongoDB.Linq", "MongoDB.Linq\MongoDB.Linq.csproj", "{C32E29CA-F154-4ECE-A02C-3BB4253BCE9B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Mongol.Tests", "Mongol.Tests\Mongol.Tests.csproj", "{C1E9E18A-BF77-40D8-A382-0339803A4CB9}"
+EndProject
+Global
+	GlobalSection(TestCaseManagementSettings) = postSolution
+		CategoryFile = Mongol1.vsmdi
+	EndGlobalSection
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{33E95706-5A53-4070-99CC-3A0F220A720D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{33E95706-5A53-4070-99CC-3A0F220A720D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{33E95706-5A53-4070-99CC-3A0F220A720D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{33E95706-5A53-4070-99CC-3A0F220A720D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5F55392-516A-44A2-80AF-D79572ED1FCB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5F55392-516A-44A2-80AF-D79572ED1FCB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5F55392-516A-44A2-80AF-D79572ED1FCB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5F55392-516A-44A2-80AF-D79572ED1FCB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C32E29CA-F154-4ECE-A02C-3BB4253BCE9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C32E29CA-F154-4ECE-A02C-3BB4253BCE9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C32E29CA-F154-4ECE-A02C-3BB4253BCE9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C32E29CA-F154-4ECE-A02C-3BB4253BCE9B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1E9E18A-BF77-40D8-A382-0339803A4CB9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1E9E18A-BF77-40D8-A382-0339803A4CB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1E9E18A-BF77-40D8-A382-0339803A4CB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1E9E18A-BF77-40D8-A382-0339803A4CB9}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
