@@ -10,12 +10,12 @@ namespace Mongol {
 		IEnumerable<T> All { get; }
 		void Archive(IEnumerable<T> records);
 		void Archive(T record);
-		void Delete(string id);
+		SafeModeResult Delete(string id);
 		SafeModeResult DeleteMany(IMongoQuery query);
 		T GetById(string id);
 		IEnumerable<T> GetManyByIds(IEnumerable<string> ids);
 		void Save(T record);
-		void InsertMany(IEnumerable<T> records);
+		IEnumerable<SafeModeResult> InsertMany(IEnumerable<T> records);
 		MongoDB.Driver.SafeModeResult UpdateMany(IMongoQuery query, UpdateBuilder update, bool asUpsert = false);
 	}
 }

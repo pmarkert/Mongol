@@ -126,13 +126,13 @@ namespace Mongol {
 			return find(query).SingleOrDefault();
 		}
 
-		private void delete(string id) {
+		private SafeModeResult delete(string id) {
 			if (id == null) {
 				logger.Error("Delete() called without specifying an Id");
 				throw new ArgumentNullException("Id must be specified for deletion.");
 			}
 			else {
-				collection.Remove(QueryCriteria_ById(id));
+				return collection.Remove(QueryCriteria_ById(id));
 			}
 		}
 
@@ -140,9 +140,9 @@ namespace Mongol {
 		/// Deletes a single record from the collection
 		/// </summary>
 		/// <param name="record">The id of the record to be deleted.</param>
-		public virtual void Delete(string id) {
+		public virtual SafeModeResult Delete(string id) {
 			logger.DebugFormat("Delete({0})", id);
-			delete(id);
+			return delete(id);
 		}
 
 		/// <summary>
@@ -150,7 +150,8 @@ namespace Mongol {
 		/// be properly time-stamped.
 		/// </summary>
 		/// <param name="records">Enumerable list of records to be inserted</param>
-		public virtual void InsertMany(IEnumerable<T> records) {
+		public virtual IEnumerable<SafeModeResult> InsertMany(IEnumerable<T> records) {
+			IEnumerable<SafeModeResult> result = null;
 			if (records == null) {
 				logger.Warn("Attempted to InsertMany on null (not empty, but null) collection. Nothing done.");
 			}
@@ -161,12 +162,13 @@ namespace Mongol {
 					OnBeforeSave(record);
 				}
 				if (materializedItems.Count > 0) {
-					collection.InsertBatch(materializedItems);
+					result = collection.InsertBatch(materializedItems);
 				}
 				foreach (T record in materializedItems) {
 					OnAfterSave(record);
 				}
 			}
+			return result;
 		}
 
 		/// <summary>
