@@ -1,25 +1,29 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
-using log4net;
-using System;
+using System.Linq.Expressions;
 using MongoDB.Bson;
 using MongoDB.Driver.Builders;
 using MongoDB.Driver;
-using System.Linq.Expressions;
+using FluentMongo.Linq;
 
 namespace Mongol {
+	/// <summary>
+	/// The untyped RecordManager manager class is used to collect any constants, or statics that may be useful without needing to have a particular typed instance.
+	/// </summary>
 	public abstract class RecordManager {
-		protected internal const string ID_FIELD = "_id";
+		/// <summary>
+		/// The field name MongoDB uses for the _id field.
+		/// </summary>
+		public const string ID_FIELD = "_id";
 	}
 
 	/// <summary>
-	/// A RecordManager serves as a repository gateway to a single collection named after the type <typeparamref name="T"/>
+	/// Repository gateway to a single collection named after the type <typeparamref name="T"/>
 	/// </summary>
 	/// <typeparam name="T">The type of object to be stored in the collection</typeparam>
 	public abstract class RecordManager<T> : RecordManager, IRecordManager<T> where T : Record {
-		private static readonly ILog logger = LogManager.GetLogger(String.Format("{0}.RecordManager<{1}>", System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Namespace, typeof(T).Name));
-
-		private static bool Initialized = false;
+		private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(String.Format("{0}.RecordManager<{1}>", System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Namespace, typeof(T).Name));
 
 		/// <summary>
 		/// The underlying MongoDB collection that the RecordManager encapsulates
@@ -28,7 +32,21 @@ namespace Mongol {
 			get { return Connection.Instance.GetCollection<T>(); }
 		}
 
+		/// <summary>
+		/// Used to track when Initialize needs to be run (once per application run)
+		/// </summary>
+		private static bool Initialized = false;
+
+		/// <summary>
+		/// Determines if the items in this collection inherit from IAuditedRecord and thus get automatic Created/Modified management.
+		/// </summary>
+		protected internal bool IsAudited { get; set; }
+
+		/// <summary>
+		/// Creates a new RecordManager
+		/// </summary>
 		protected RecordManager() {
+			IsAudited = typeof(T).IsAssignableFrom(typeof(IAuditedRecord));
 			if (!Initialized) {
 				lock (typeof(RecordManager<T>)) {
 					if (!Initialized) {
@@ -39,125 +57,67 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Override this method to do any once-per application instance initialization (such as ensuring indexes)
+		/// The Linq Queryable for the collection
 		/// </summary>
-		protected virtual void Initialize() {
-			logger.Debug("Initialize()");
-		}
-
-		/// <summary>
-		/// Enumeration of the entire collection (Danger Will Robinson!)  Use the force wisely.
-		/// </summary>
-		public virtual IEnumerable<T> All {
+		public virtual IQueryable<T> All {
 			get {
 				logger.Debug("All");
-				return collection.FindAll();
+				return collection.AsQueryable();
 			}
 		}
 
 		/// <summary>
-		/// Returns the number of items in the collection that match the optional query criteria (or all items if not specified).
+		/// Deletes a single record from the collection by id.
 		/// </summary>
-		/// <param name="query">An optional query to filter the counted items.</param>
-		/// <returns>The number of items in the collection matching the filter.</returns>
-		public long Count(IMongoQuery query = null) {
-			logger.DebugFormat("Count({0})", query);
-			return collection.Count(query);
+		public virtual void DeleteById(string id) {
+			logger.DebugFormat("Delete({0})", id);
+			deleteById(id);
 		}
 
 		/// <summary>
-		/// Retrieves a single record by Id
+		/// Retrieves a single record from the collection by Id
 		/// </summary>
-		/// <param name="Id">The Id of the record to be retrieved.</param>
-		/// <returns>The specified record or null if not found</returns>
-		public virtual T GetById(string Id) {
-			logger.DebugFormat("GetById({0})", Id);
-			if (Id == null) {
-				logger.Error("GetById() called without an Id.");
-				throw new ArgumentNullException("id", "Cannot GetById with a null Id");
+		public virtual T GetById(string id) {
+			logger.DebugFormat("GetById({0})", id);
+			if (id == null) {
+				logger.Error("GetById() called with null id.");
+				throw new ArgumentNullException("id");
 			}
-			return collection.FindOneById(Id);
+			return collection.FindOneById(id);
 		}
 
 		/// <summary>
-		/// Returns an enumerable list of items by the ids.  Useful to solve 1-N problems on psuedo-joins. The list of Ids must have a reasonable number.
+		/// Retrieves matching records by the ids.
 		/// </summary>
-		/// <param name="ids">The list of Id's for which to find records.  Keep it sensible.</param>
-		/// <returns>Items from the collection matching the ids.</returns>
+		/// <remarks>Useful to solve 1-N problems on psuedo-joins. The list of ids should not contain an unreasonable number of items (Mongo has a limit of 4MB per query document).</remarks>
+		/// <param name="ids">The list of Id's for which to find records.</param>
 		public virtual IEnumerable<T> GetManyByIds(IEnumerable<string> ids) {
 			logger.Debug("GetManyByIds(ids)");
+			if (ids == null) {
+				logger.Error("GetById() called with null value for ids enumeration.");
+				throw new ArgumentNullException("ids");
+			}
 			return collection.Find(Query.In(ID_FIELD, new BsonArray(ids)));
 		}
 
 		/// <summary>
-		/// Executes a search query against the collection, optionally applying a sort, skip, and limit. Normal common sense about indexing is worth keeping in mind for sizeable collections.
+		/// Inserts many items into the collection in a single batch.  If records are Audited, they will still be properly time-stamped.
 		/// </summary>
-		/// <param name="query">The query to execute.</param>
-		/// <param name="sortBy">Optionally, the order in which to return items</param>
-		/// <param name="skip">Optionally, the number of items to skip from the beginning of the list</param>
-		/// <param name="limit">Optionally, the maximum number of items to be returned</param>
-		/// <returns>An enumerable list of items matching the criteria</returns>
-		protected internal virtual IEnumerable<T> Find(IMongoQuery query, IMongoSortBy sortBy = null, int? skip = null, int? limit = null) {
-			logger.DebugFormat("Find({0},{1},{2},{3})", query, sortBy, skip, limit);
-			return find(query, sortBy, skip, limit);
-		}
-
-		private IEnumerable<T> find(IMongoQuery query, IMongoSortBy sortBy = null, int? skip = null, int? limit = null) {
-			MongoCursor<T> cursor = collection.Find(query);
-			if (sortBy != null) {
-				cursor.SetSortOrder(sortBy);
+		/// <remarks>The number of items cannot be too large because there is a size-limit on messages, but it's pretty reasonable.</remarks>
+		/// <returns>The number of items that were Inserted.</returns>
+		public virtual void BatchInsert(IEnumerable<T> records) {
+			logger.Debug("InsertMany(records)");
+			if (records == null) {
+				logger.Error("BatchInsert() called with null value for records enumeration.");
+				throw new ArgumentNullException("records");
 			}
-			if (skip.HasValue) {
-				cursor.SetSkip(skip.Value);
-			}
-			if (limit.HasValue) {
-				cursor.SetLimit(limit.Value);
-			}
-			return cursor;
-		}
-
-		/// <summary>
-		/// Finds the one and only item in the collection matching the criteria.  Throw an exception if multiple items are matched.
-		/// </summary>
-		/// <param name="query">The query to filter the items</param>
-		/// <returns>The item or null if no matches are found.</returns>
-		protected internal virtual T FindSingle(IMongoQuery query) {
-			logger.DebugFormat("FindSingle({0})", query);
-			return find(query).SingleOrDefault();
-		}
-
-		private SafeModeResult delete(string id) {
-			if (id == null) {
-				logger.Error("Delete() called without specifying an Id");
-				throw new ArgumentNullException("Id must be specified for deletion.");
-			}
-			else {
-				return collection.Remove(QueryCriteria_ById(id));
-			}
-		}
-
-		/// <summary>
-		/// Deletes a single record from the collection
-		/// </summary>
-		/// <param name="record">The id of the record to be deleted.</param>
-		public virtual SafeModeResult Delete(string id) {
-			logger.DebugFormat("Delete({0})", id);
-			return delete(id);
-		}
-
-		/// <summary>
-		/// Inserts many items into the collection in a batch.  The number of items cannot be too large because there is a size-limit on messages, but it's pretty reasonable.  If records are Audited, they will
-		/// be properly time-stamped.
-		/// </summary>
-		/// <param name="records">Enumerable list of records to be inserted</param>
-		public virtual IEnumerable<SafeModeResult> InsertMany(IEnumerable<T> records) {
 			IEnumerable<SafeModeResult> result = null;
 			if (records == null) {
 				logger.Warn("Attempted to InsertMany on null (not empty, but null) collection. Nothing done.");
 			}
 			else {
 				logger.Info("InsertMany called for " + records.Count() + " records.");
-				List<T> materializedItems = records.ToList();
+				List<T> materializedItems = records.Where(r => r != null).ToList();
 				foreach (T record in materializedItems) {
 					OnBeforeSave(record);
 				}
@@ -168,56 +128,102 @@ namespace Mongol {
 					OnAfterSave(record);
 				}
 			}
-			return result;
 		}
 
 		/// <summary>
-		/// Called becore a record is saved (single or in batch).  Sets the Id if null and updates Audit time-stamps as needed.
+		/// Saves a record to the collection (either as an insert or update).  Replaces the entire record if updated.
 		/// </summary>
-		/// <param name="record">The that is about to be saved.</param>
-		protected virtual void OnBeforeSave(T record) {
-			if (record == null) {
-				logger.Error("OnBeforeSave called with a null record.");
-				throw new ArgumentNullException("Cannot call OnBeforeSave with a null record.");
-			}
-			logger.DebugFormat("OnBeforeSave({0})", record.Id);
-			if (record.Id == null) {
-				record.Id = ObjectId.GenerateNewId().ToString();
-				logger.DebugFormat("Generated new Id for record - " + record.Id);
-			}
-			IAuditedRecord audited = record as IAuditedRecord;
-			if (audited != null) {
-				var now = DateTime.UtcNow;
-				logger.DebugFormat("AuditDate for record - " + now);
-				if (audited.CreatedDate == DateTime.MinValue) {
-					audited.CreatedDate = now;
-				}
-				audited.ModifiedDate = now;
-			}
-		}
-
-		/// <summary>
-		/// Called after a record is saved.
-		/// </summary>
-		/// <param name="record"></param>
-		protected virtual void OnAfterSave(T record) {
-			logger.DebugFormat("OnAfterSave({0})", record.Id);
-		}
-
-		/// <summary>
-		/// Saves a record to the database (either new or updated).  Replaces the entire record if updated.
-		/// </summary>
-		/// <param name="record">The record to be inserted or updated.</param>
-		public virtual void Save(T record) {
+		/// <returns>true if the record was inserted, false if it was overwritten.</returns>
+		public virtual bool Save(T record) {
 			if (record == null) {
 				logger.Error("Cannot Save a null record.");
 				throw new ArgumentNullException("record", "Cannot save a null record.");
 			}
 			else {
+				logger.DebugFormat("Save({0})", record.Id);
 				OnBeforeSave(record);
-				collection.Save(record);
+				var safeModeResult = collection.Save(record);
 				OnAfterSave(record);
+				return !safeModeResult.UpdatedExisting;
 			}
+		}
+
+		/// <summary>
+		/// Override this method to do any once-per application run initialization (such as ensuring indexes), cleanup, etc.
+		/// </summary>
+		protected internal virtual void Initialize() {
+			logger.Debug("Initialize()");
+		}
+
+		/// <summary>
+		/// Gets the number of items in the collection that match the optional query criteria (or all items if no query specified).
+		/// </summary>
+		/// <param name="criteria">An optional query to filter the counted items.</param>
+		/// <returns>The number of items in the collection matching the filter.</returns>
+		protected internal long Count(IMongoQuery criteria = null) {
+			logger.DebugFormat("Count({0})", criteria);
+			return collection.Count(criteria);
+		}
+
+		/// <summary>
+		/// Executes a search query against the collection, optionally applying a sort, skip, and limit.
+		/// </summary>
+		/// <remarks>Use common sense about indexing common queries, especially for sizeable collections.</remarks>
+		protected internal virtual IEnumerable<T> Find(IMongoQuery criteria, IMongoSortBy sort = null, int? skip = null, int? limit = null) {
+			logger.DebugFormat("Find({0},{1},{2},{3})", criteria, sort, skip, limit);
+			return find(criteria, sort, skip, limit);
+		}
+
+		/// <summary>
+		/// Finds the one and only item in the collection matching the criteria.  Throws an exception if multiple items were matched.
+		/// </summary>
+		/// <returns>The item or null if no matches are found.</returns>
+		protected internal virtual T FindSingle(IMongoQuery criteria) {
+			logger.DebugFormat("FindSingle({0})", criteria);
+			return find(criteria).SingleOrDefault();
+		}
+
+		/// <summary>
+		/// Event hook called becore a record is saved (either single or in batch).  Sets the Id if null and updates audit time-stamps if IsAudited=true.
+		/// </summary>
+		protected internal virtual void OnBeforeSave(T record) {
+			logger.DebugFormat("OnBeforeSave({0})", record.Id);
+			if (record.Id == null) {
+				record.Id = GenerateNewIdForRecord(record);
+				logger.DebugFormat("Generated new Id for record - " + record.Id);
+			}
+			if (IsAudited) {
+				UpdateRecordAuditInformation(record);
+			}
+		}
+
+		/// <summary>
+		/// Called to update TimeStamp information on IAuditedRecord records
+		/// </summary>
+		protected internal virtual void UpdateRecordAuditInformation(T record) {
+			IAuditedRecord audited = record as IAuditedRecord;
+			var now = DateTime.UtcNow;
+			logger.DebugFormat("AuditDate for record - " + now);
+			if (audited.CreatedDate == DateTime.MinValue) {
+				audited.CreatedDate = now;
+			}
+			audited.ModifiedDate = now;
+		}
+
+		/// <summary>
+		/// Called to generate a new Id value for a record if it was being saved with a null Id.  Default implementation is a new ObjectId.
+		/// </summary>
+		/// <param name="record"></param>
+		protected internal static string GenerateNewIdForRecord(T record) {
+			return ObjectId.GenerateNewId().ToString();
+		}
+
+		/// <summary>
+		/// Event hook called after a record is saved.
+		/// </summary>
+		/// <param name="record"></param>
+		protected internal virtual void OnAfterSave(T record) {
+			logger.DebugFormat("OnAfterSave({0})", record.Id);
 		}
 
 		/// <summary>
@@ -231,21 +237,24 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Automically finds and modifies at most one item, returning the item.
+		/// Atomically finds and modifies at most one item in the collection, returning the item.
 		/// </summary>
-		/// <param name="query">The criteria for which to find an item.</param>
-		/// <param name="update">The update command to modify the item</param>
-		/// <param name="orderBy">The sort order to use (first matching item is used)</param>
+		/// <param name="update">The update command to modify the item.  The update operation should usually cause the item to no longer match the query criteria.</param>
+		/// <param name="sortBy">The sort order to use (the first matching item is used)</param>
 		/// <param name="returnModifiedVersion">If true, returns the post-modification version of the item, otherwise the item as it was before modification.  Default=true</param>
-		/// <returns></returns>
-		protected internal virtual T FindOneAndModify(IMongoQuery query, IMongoUpdate update, IMongoSortBy sortBy = null, bool returnModifiedVersion = true) {
-			logger.DebugFormat("FindAndModify({0},{1},{2},{3})", query, update, sortBy, returnModifiedVersion);
-			return collection.FindAndModify(query, sortBy, update, returnModifiedVersion).GetModifiedDocumentAs<T>();
+		/// <remarks>Useful for managing concurrency across multiple processes such as a Queue.  Can also be used to setup items that go through a workflow.</remarks>
+		protected internal virtual T FindOneAndModify(IMongoQuery criteria, IMongoUpdate update, IMongoSortBy sortBy = null, bool returnModifiedVersion = true) {
+			logger.DebugFormat("FindAndModify({0},{1},{2},{3})", criteria, update, sortBy, returnModifiedVersion);
+			return collection.FindAndModify(criteria, sortBy, update, returnModifiedVersion).GetModifiedDocumentAs<T>();
 		}
 
-		protected internal virtual T FindOneAndRemove(IMongoQuery query, IMongoSortBy sortBy = null) {
-			logger.DebugFormat("FindOneAndRemove({0},{1})", query, sortBy);
-			var removeResult = collection.FindAndRemove(query, sortBy);
+		/// <summary>
+		/// Automically finds and removes at most one item from the collection, returning the item.
+		/// </summary>
+		/// <param name="orderBy">The sort order to use (the first matching item is used)</param>
+		protected internal virtual T FindOneAndRemove(IMongoQuery criteria, IMongoSortBy sortBy = null) {
+			logger.DebugFormat("FindOneAndRemove({0},{1})", criteria, sortBy);
+			var removeResult = collection.FindAndRemove(criteria, sortBy);
 			if (removeResult.ModifiedDocument != null) {
 				return removeResult.GetModifiedDocumentAs<T>();
 			}
@@ -255,82 +264,83 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Executes FindAndModify in an enumerable list of items, be certain that your update causes documents to no longer match the query, or you will end up with an infinite loop.  This is thread-safe
-		/// to work across multiple callers (and processes) since it uses the database to atomically find and modify.
+		/// Enumerates FindAndModify, be certain that your update causes documents to no longer match the query, or you will end up with an infinite loop.  
+		/// This is thread-safe to work across multiple callers (and processes) since it uses Mongo to atomically find and modify.
 		/// </summary>
-		/// <param name="query">The criteria for which to find items</param>
+		/// <param name="criteria">The criteria for which to find items</param>
 		/// <param name="update">The update command to modify the items.</param>
-		/// <param name="sortBy"></param>
 		/// <param name="returnModifiedVersion">If true, returns the post-modification version of the item, otherwise the item as it was before modification. Default=true</param>
-		/// <returns></returns>
-		protected internal IEnumerable<T> EnumerateAndModify(IMongoQuery query, IMongoUpdate update, IMongoSortBy sortBy = null, bool returnModifiedVersion = true) {
-			logger.DebugFormat("EnumerateAndModify({0},{1},{2},{3})", query, update, sortBy, returnModifiedVersion);
+		protected internal IEnumerable<T> EnumerateAndModify(IMongoQuery criteria, IMongoUpdate update, IMongoSortBy sortBy = null, bool returnModifiedVersion = true) {
+			logger.DebugFormat("EnumerateAndModify({0},{1},{2},{3})", criteria, update, sortBy, returnModifiedVersion);
 			T result;
-			do {
-				result = FindOneAndModify(query, update, sortBy, returnModifiedVersion);
-				if (result != null) {
-					yield return result;
-				}
-			} while (result != null);
+			while ((result = FindOneAndModify(criteria, update, sortBy, returnModifiedVersion)) != null) {
+				yield return result;
+			}
 		}
 
 		/// <summary>
-		/// Executes FindAndRemove to produce an enumerable list of maching items, removing each one from the database as it is returned. This is thread-safe
-		/// to work across multiple callers (and processes) since it uses the database to atomically find and remove.
+		/// Enumerates FindAndRemove, removing each one from the database as it is returned. 
+		/// This is thread-safe to work across multiple callers (and processes) since it uses Mongo to atomically find and remove.
 		/// </summary>
-		/// <param name="query">The criteria for which to find items</param>
-		/// <param name="sortBy"></param>
-		protected internal IEnumerable<T> EnumerateAndRemove(IMongoQuery query, IMongoSortBy sortBy = null) {
-			logger.DebugFormat("EnumerateAndRemove({0},{1})", query, sortBy);
+		/// <param name="criteria">The criteria for which to find items</param>
+		protected internal IEnumerable<T> EnumerateAndRemove(IMongoQuery criteria, IMongoSortBy sortBy = null) {
+			logger.DebugFormat("EnumerateAndRemove({0},{1})", criteria, sortBy);
 			T result;
-			do {
-				var removeResult = collection.FindAndRemove(query, sortBy);
-				if (removeResult.ModifiedDocument != null) {
-					result = removeResult.GetModifiedDocumentAs<T>();
-					yield return result;
-				}
-				else {
-					result = null;
-				}
-			} while (result != null);
-		}
-
-		protected internal virtual string ArchiveCollectionName {
-			get {
-				return "Archived_" + typeof(T).Name;
+			while ((result = FindOneAndRemove(criteria, sortBy)) != null) {
+				yield return result;
 			}
 		}
 
 		/// <summary>
-		/// Saves the item into a collection prefixed with "Archived_" and removes the document from the original collection.
+		/// Updates many documents at once. If the item is an AuditedRecord, DateModified will be properly timestamped.
 		/// </summary>
-		/// <param name="record"></param>
-		public virtual void Archive(T record) {
-			if (record == null) {
-				logger.Error("Attempted to archive a null record.");
-				throw new ArgumentNullException("record", "Cannot archive a null record.");
+		/// <param name="update">The update operation to apply to the matched items.</param>
+		/// <param name="asUpsert">If true, MongoDB will attempt to create new items based upon the query values passed in.</param>
+		/// <returns>The number of items updated.</returns>
+		protected internal virtual long UpdateMany(IMongoQuery criteria, UpdateBuilder update, bool asUpsert = false) {
+			logger.DebugFormat("UpdateMany({0},{1},{2})", criteria, update, asUpsert);
+			if (IsAudited) {
+				var auditDate = DateTime.UtcNow;
+				logger.DebugFormat("Records are auditable, so adding update criteria to set AuditDate to - " + auditDate);
+				update = Update.Set(PropertyNameResolver<IAuditedRecord>.Resolve(x => x.ModifiedDate), auditDate).Combine(update);
 			}
-			else {
-				logger.DebugFormat("Archive({0}), ArchiveCollectionName=", record.Id, ArchiveCollectionName);
-				collection.Database.GetCollection<T>(ArchiveCollectionName).Save(record);
-				delete(record.Id);
-			}
+			return collection.Update(criteria, update, asUpsert ? UpdateFlags.Multi | UpdateFlags.Upsert : UpdateFlags.Multi).DocumentsAffected;
 		}
 
 		/// <summary>
-		/// Archives multiple records.  Saves the items into a collection prefixed with "Archived_" and removes them from the original collection.
+		/// Deletes multiple items in the colleciton by query criteria.
 		/// </summary>
-		/// <param name="records"></param>
-		public virtual void Archive(IEnumerable<T> records) {
-			if (records == null) {
-				logger.Error("Attempted to call Archive on null collection.");
-				throw new ArgumentNullException("records", "Cannot Archive a null collection");
+		/// <returns>The number of documents deleted.</returns>
+		protected internal virtual long DeleteMany(IMongoQuery criteria) {
+			logger.DebugFormat("DeleteMany({0})", criteria);
+			if (criteria == null) {
+				logger.Error("Attempted to call DeleteMany with a null query.");
+				throw new ArgumentNullException("query", "Cannot call DeleteMany with a null query");
 			}
-			else {
-				foreach (T item in records) {
-					Archive(item);
-				}
+			return collection.Remove(criteria).DocumentsAffected;
+		}
+
+		/// <summary>
+		/// Returns a string representation of the specified expression.  This allows you to strongly type your query criteria, so they can be passed back to Mongo as strings.
+		/// </summary>
+		/// <param name="expression">A member expression on the record type.</param>
+		/// <returns>A string representing the member expression</returns>
+		protected internal static string PropertyName<S>(Expression<Func<T, S>> expression) {
+			// TODO - Add caching here if the lambdas get to be too expensive?  But the cache may not help if the building of the expression is actually the expensive part
+			MemberExpression expressionBody = expression.Body as MemberExpression;
+			if (expressionBody == null) {
+				throw new ApplicationException("Expression must be member access.");
 			}
+			return PropertyNameResolver<T>.Resolve(expression);
+		}
+
+		/// <summary>
+		/// Ensures that the specified index is created on the collection.
+		/// </summary>
+		/// <remarks>Can be called multiple times in-expensively.</remarks>
+		protected internal virtual void EnsureIndex(IMongoIndexKeys keys, IMongoIndexOptions options) {
+			logger.DebugFormat("EnsureIndex({0},{1})", keys, options);
+			collection.EnsureIndex(keys, options);
 		}
 
 		/// <summary>
@@ -338,7 +348,7 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="Id">The value of the Id for which to query</param>
 		/// <returns>A MongoQuery criteria for the equality of the specified Id.</returns>
-		protected static IMongoQuery QueryCriteria_ById(string Id) {
+		protected internal static IMongoQuery QueryCriteria_ById(string Id) {
 			if (Id == null) {
 				logger.Error("Attempted to call QueryCriteriaById with a null Id");
 				throw new ArgumentNullException("Id", "Cannot QueryCriteriaById with a null Id");
@@ -349,9 +359,9 @@ namespace Mongol {
 		/// <summary>
 		/// Convenience method to create a Query criteria based upon the ID field.
 		/// </summary>
-		/// <param name="Id">The value of the Id for which to query</param>
+		/// <param name="Id">A list of values for Ids for which to query</param>
 		/// <returns>A MongoQuery criteria for the equality of the specified Id.</returns>
-		protected static IMongoQuery QueryCriteria_ById(IEnumerable<string> IdList) {
+		protected internal static IMongoQuery QueryCriteria_ById(IEnumerable<string> IdList) {
 			if (IdList == null) {
 				logger.Error("Attempted to call QueryCriteriaById with a null Id");
 				throw new ArgumentNullException("Id", "Cannot QueryCriteriaById with a null Id");
@@ -359,63 +369,33 @@ namespace Mongol {
 			return Query.In(ID_FIELD, BsonArray.Create(IdList));
 		}
 
-		/// <summary>
-		/// Updates many documents at once. If the item is an AuditedRecord, DateModified will be properly timestamped.
-		/// </summary>
-		/// <param name="query">The criteria for which to match items.</param>
-		/// <param name="update">The update operation to apply to the matched items.</param>
-		/// <param name="asUpsert">If true, MongoDB will attempt to create new items based upon the query values passed in.</param>
-		/// <returns>SafeModeResult with count of items</returns>
-		public virtual SafeModeResult UpdateMany(IMongoQuery query, UpdateBuilder update, bool asUpsert = false) {
-			logger.DebugFormat("UpdateMany({0},{1},{2})", query, update, asUpsert);
-			if (typeof(T).IsAssignableFrom(typeof(IAuditedRecord))) {
-				var auditDate = DateTime.UtcNow;
-				logger.DebugFormat("Records are auditable, so adding criteria to update to set AuditDate to - " + auditDate);
-				update = Update.Set("ModifiedDate", auditDate).Combine(update);
+		protected internal IEnumerable<T> find(IMongoQuery criteria, IMongoSortBy sortBy = null, int? skip = null, int? limit = null) {
+			MongoCursor<T> cursor = collection.Find(criteria);
+			if (sortBy != null) {
+				cursor.SetSortOrder(sortBy);
 			}
-			var updateFlags = UpdateFlags.Multi;
-			if (asUpsert) {
-				updateFlags = updateFlags | UpdateFlags.Upsert;
+			if (skip.HasValue) {
+				cursor.SetSkip(skip.Value);
 			}
-			return collection.Update(query, update, updateFlags);
+			if (limit.HasValue) {
+				cursor.SetLimit(limit.Value);
+			}
+			return cursor;
 		}
 
 		/// <summary>
-		/// Deletes multiple items in the colleciton by query criteria.
+		/// 
 		/// </summary>
-		/// <param name="query">The critier for which to match items for deletion.</param>
-		/// <returns>SafeModeResult with count of items.</returns>
-		public virtual SafeModeResult DeleteMany(IMongoQuery query) {
-			logger.DebugFormat("DeleteMany({0})", query);
-			if (query == null) {
-				logger.Error("Attempted to call DeleteMany with a null query.");
-				throw new ArgumentNullException("query", "Cannot call DeleteMany with a null query");
+		/// <param name="id"></param>
+		/// <returns></returns>
+		protected internal SafeModeResult deleteById(string id) {
+			if (id == null) {
+				logger.Error("Delete() called without specifying an Id");
+				throw new ArgumentNullException("Id must be specified for deletion.");
 			}
-			return collection.Remove(query);
-		}
-
-		/// <summary>
-		/// Returns a string representation of the specified expression.  This allows you to strongly type your query criteria, so they can be passed back to Mongo as strings.
-		/// </summary>
-		/// <param name="expression">A member expression on the record type.</param>
-		/// <returns>A string representing the member expression</returns>
-		protected internal static string PropertyName<S>(Expression<Func<T, S>> expression) {
-			// TODO - Add caching here if it gets to be too expensive?  But the cache may not help if the building of the expression is actually the expensive part
-			MemberExpression expressionBody = expression.Body as MemberExpression;
-			if (expressionBody == null) {
-				throw new ApplicationException("Expression must be member access.");
+			else {
+				return collection.Remove(QueryCriteria_ById(id));
 			}
-			return PropertyNameResolver<T>.Resolve(expression);
-		}
-
-		/// <summary>
-		/// Ensures that the specified index is created on the collection.  Can be called multiple times in-expensively.
-		/// </summary>
-		/// <param name="keys"></param>
-		/// <param name="options"></param>
-		protected internal virtual void EnsureIndex(IMongoIndexKeys keys, IMongoIndexOptions options) {
-			logger.DebugFormat("EnsureIndex({0},{1})", keys, options);
-			collection.EnsureIndex(keys, options);
 		}
 	}
 }

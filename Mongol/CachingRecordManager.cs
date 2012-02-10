@@ -33,11 +33,12 @@ namespace Mongol {
 			}
 		}
 
-		public override void Save(T record) {
-			base.Save(record);
+		public override bool Save(T record) {
+			var wasInsert = base.Save(record);
 			lock (cache) {
 				cache[record.Id] = record;
 			}
+			return wasInsert;
 		}
 	}
 }
