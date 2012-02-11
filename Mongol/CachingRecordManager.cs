@@ -9,10 +9,10 @@ namespace Mongol {
 	/// that have a relatively small number of objects that a frequently retrieved for read-only activity.
 	/// </summary>
 	/// <typeparam name="T"></typeparam>
-	public class CachingRecordManager<T> : RecordManager<T> where T : Record {
-		private static Dictionary<string, T> cache = new Dictionary<string, T>();
+	public class CachingRecordManager<T> : RecordManager<T> where T : class {
+		private static Dictionary<object, T> cache = new Dictionary<object, T>();
 
-		public override T GetById(string Id) {
+		public override T GetById(object Id) {
 			if (!cache.ContainsKey(Id)) {
 				lock (cache) {
 					if (!cache.ContainsKey(Id)) {
@@ -36,7 +36,7 @@ namespace Mongol {
 		public override bool Save(T record) {
 			var wasInsert = base.Save(record);
 			lock (cache) {
-				cache[record.Id] = record;
+				cache[GetRecordId(record)] = record;
 			}
 			return wasInsert;
 		}

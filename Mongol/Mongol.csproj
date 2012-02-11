@@ -55,9 +55,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ArchiveableRecordManager.cs" />
+    <Compile Include="ITimeStampedRecord.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="MaintainDateAttributes.cs" />
     <Compile Include="CachingRecordManager.cs" />
-    <Compile Include="IAuditedRecord.cs" />
     <Compile Include="IMongoQueryExtensions.cs" />
     <Compile Include="IRecordManager.cs" />
     <Compile Include="ManagerFactory.cs" />
@@ -67,6 +69,7 @@
     <Compile Include="Record.cs" />
     <Compile Include="RecordManager.cs" />
     <Compile Include="PropertyNameResolver.cs" />
+    <Compile Include="TimeStampedRecord.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Mongol.nuspec" />

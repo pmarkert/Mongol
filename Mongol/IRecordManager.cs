@@ -10,9 +10,9 @@ namespace Mongol {
 
 	public interface IRecordManager<T> : IRecordManager {
 		IQueryable<T> All { get; }
-		void DeleteById(string id);
-		T GetById(string id);
-		IEnumerable<T> GetManyByIds(IEnumerable<string> ids);
+		void DeleteById(object id);
+		T GetById(object id);
+		IEnumerable<T> GetManyByIds(IEnumerable<object> ids);
 		bool Save(T record);
 		void BatchInsert(IEnumerable<T> records);
 	}

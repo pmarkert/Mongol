@@ -51,5 +51,13 @@ namespace Mongol {
 				return Id.GetHashCode();
 			}
 		}
+
+		/// <summary>
+		/// Combines the ClassName and Id of the Record
+		/// </summary>
+		/// <returns></returns>
+		public override string ToString() {
+			return String.Format("{0}:{1}", GetType().Name, Id);
+		}
 	}
 }

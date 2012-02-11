@@ -6,6 +6,7 @@ using MongoDB.Bson;
 using MongoDB.Driver.Builders;
 using MongoDB.Driver;
 using FluentMongo.Linq;
+using MongoDB.Bson.Serialization;
 
 namespace Mongol {
 	/// <summary>
@@ -22,7 +23,7 @@ namespace Mongol {
 	/// Repository gateway to a single collection named after the type <typeparamref name="T"/>
 	/// </summary>
 	/// <typeparam name="T">The type of object to be stored in the collection</typeparam>
-	public abstract class RecordManager<T> : RecordManager, IRecordManager<T> where T : Record {
+	public abstract class RecordManager<T> : RecordManager, IRecordManager<T> where T : class {
 		private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(String.Format("{0}.RecordManager<{1}>", System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Namespace, typeof(T).Name));
 
 		/// <summary>
@@ -38,15 +39,9 @@ namespace Mongol {
 		private static bool Initialized = false;
 
 		/// <summary>
-		/// Determines if the items in this collection inherit from IAuditedRecord and thus get automatic Created/Modified management.
-		/// </summary>
-		protected internal bool IsAudited { get; set; }
-
-		/// <summary>
 		/// Creates a new RecordManager
 		/// </summary>
 		protected RecordManager() {
-			IsAudited = typeof(T).IsAssignableFrom(typeof(IAuditedRecord));
 			if (!Initialized) {
 				lock (typeof(RecordManager<T>)) {
 					if (!Initialized) {
@@ -69,7 +64,7 @@ namespace Mongol {
 		/// <summary>
 		/// Deletes a single record from the collection by id.
 		/// </summary>
-		public virtual void DeleteById(string id) {
+		public virtual void DeleteById(object id) {
 			logger.DebugFormat("Delete({0})", id);
 			deleteById(id);
 		}
@@ -77,13 +72,13 @@ namespace Mongol {
 		/// <summary>
 		/// Retrieves a single record from the collection by Id
 		/// </summary>
-		public virtual T GetById(string id) {
+		public virtual T GetById(object id) {
 			logger.DebugFormat("GetById({0})", id);
 			if (id == null) {
 				logger.Error("GetById() called with null id.");
 				throw new ArgumentNullException("id");
 			}
-			return collection.FindOneById(id);
+			return collection.FindOneById(BsonValue.Create(id));
 		}
 
 		/// <summary>
@@ -91,7 +86,7 @@ namespace Mongol {
 		/// </summary>
 		/// <remarks>Useful to solve 1-N problems on psuedo-joins. The list of ids should not contain an unreasonable number of items (Mongo has a limit of 4MB per query document).</remarks>
 		/// <param name="ids">The list of Id's for which to find records.</param>
-		public virtual IEnumerable<T> GetManyByIds(IEnumerable<string> ids) {
+		public virtual IEnumerable<T> GetManyByIds(IEnumerable<object> ids) {
 			logger.Debug("GetManyByIds(ids)");
 			if (ids == null) {
 				logger.Error("GetById() called with null value for ids enumeration.");
@@ -101,7 +96,7 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Inserts many items into the collection in a single batch.  If records are Audited, they will still be properly time-stamped.
+		/// Inserts many items into the collection in a single batch.
 		/// </summary>
 		/// <remarks>The number of items cannot be too large because there is a size-limit on messages, but it's pretty reasonable.</remarks>
 		/// <returns>The number of items that were Inserted.</returns>
@@ -140,7 +135,7 @@ namespace Mongol {
 				throw new ArgumentNullException("record", "Cannot save a null record.");
 			}
 			else {
-				logger.DebugFormat("Save({0})", record.Id);
+				logger.DebugFormat("Save({0})", record);
 				OnBeforeSave(record);
 				var safeModeResult = collection.Save(record);
 				OnAfterSave(record);
@@ -149,10 +144,17 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Override this method to do any once-per application run initialization (such as ensuring indexes), cleanup, etc.
+		/// Override this method to do any once-per application run initialization (such as ensuring indexes), setting special ClassMap conventions, collection cleanup, etc.
 		/// </summary>
 		protected internal virtual void Initialize() {
 			logger.Debug("Initialize()");
+		}
+
+		/// <summary>
+		/// Retrieves the Id of a Record
+		/// </summary>
+		protected internal object GetRecordId(T record) {
+			return BsonClassMap.LookupClassMap(typeof(T)).IdMemberMap.Getter(record);
 		}
 
 		/// <summary>
@@ -184,38 +186,17 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Event hook called becore a record is saved (either single or in batch).  Sets the Id if null and updates audit time-stamps if IsAudited=true.
+		/// Event hook called becore a record is saved (either single or in batch).
 		/// </summary>
 		protected internal virtual void OnBeforeSave(T record) {
-			logger.DebugFormat("OnBeforeSave({0})", record.Id);
-			if (record.Id == null) {
-				record.Id = GenerateNewIdForRecord(record);
-				logger.DebugFormat("Generated new Id for record - " + record.Id);
+			if (record is ITimeStampedRecord) {
+				ITimeStampedRecord tsRecord = record as ITimeStampedRecord;
+				var now = DateTime.UtcNow;
+				if (tsRecord.CreatedDate == DateTime.MinValue) {
+					tsRecord.CreatedDate = now;
+				}
+				tsRecord.ModifiedDate = now;
 			}
-			if (IsAudited) {
-				UpdateRecordAuditInformation(record);
-			}
-		}
-
-		/// <summary>
-		/// Called to update TimeStamp information on IAuditedRecord records
-		/// </summary>
-		protected internal virtual void UpdateRecordAuditInformation(T record) {
-			IAuditedRecord audited = record as IAuditedRecord;
-			var now = DateTime.UtcNow;
-			logger.DebugFormat("AuditDate for record - " + now);
-			if (audited.CreatedDate == DateTime.MinValue) {
-				audited.CreatedDate = now;
-			}
-			audited.ModifiedDate = now;
-		}
-
-		/// <summary>
-		/// Called to generate a new Id value for a record if it was being saved with a null Id.  Default implementation is a new ObjectId.
-		/// </summary>
-		/// <param name="record"></param>
-		protected internal static string GenerateNewIdForRecord(T record) {
-			return ObjectId.GenerateNewId().ToString();
 		}
 
 		/// <summary>
@@ -223,7 +204,6 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="record"></param>
 		protected internal virtual void OnAfterSave(T record) {
-			logger.DebugFormat("OnAfterSave({0})", record.Id);
 		}
 
 		/// <summary>
@@ -292,17 +272,15 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// Updates many documents at once. If the item is an AuditedRecord, DateModified will be properly timestamped.
+		/// Updates many documents at once.
 		/// </summary>
 		/// <param name="update">The update operation to apply to the matched items.</param>
 		/// <param name="asUpsert">If true, MongoDB will attempt to create new items based upon the query values passed in.</param>
 		/// <returns>The number of items updated.</returns>
 		protected internal virtual long UpdateMany(IMongoQuery criteria, UpdateBuilder update, bool asUpsert = false) {
 			logger.DebugFormat("UpdateMany({0},{1},{2})", criteria, update, asUpsert);
-			if (IsAudited) {
-				var auditDate = DateTime.UtcNow;
-				logger.DebugFormat("Records are auditable, so adding update criteria to set AuditDate to - " + auditDate);
-				update = Update.Set(PropertyNameResolver<IAuditedRecord>.Resolve(x => x.ModifiedDate), auditDate).Combine(update);
+			if (typeof(ITimeStampedRecord).IsAssignableFrom(typeof(T))) {
+				update = update.Combine(Update.Set(PropertyNameResolver<ITimeStampedRecord>.Resolve(x => x.ModifiedDate), DateTime.UtcNow));
 			}
 			return collection.Update(criteria, update, asUpsert ? UpdateFlags.Multi | UpdateFlags.Upsert : UpdateFlags.Multi).DocumentsAffected;
 		}
@@ -348,12 +326,12 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="Id">The value of the Id for which to query</param>
 		/// <returns>A MongoQuery criteria for the equality of the specified Id.</returns>
-		protected internal static IMongoQuery QueryCriteria_ById(string Id) {
+		protected internal static IMongoQuery QueryCriteria_ById(object Id) {
 			if (Id == null) {
 				logger.Error("Attempted to call QueryCriteriaById with a null Id");
 				throw new ArgumentNullException("Id", "Cannot QueryCriteriaById with a null Id");
 			}
-			return Query.EQ(ID_FIELD, Id);
+			return Query.EQ(ID_FIELD, BsonValue.Create(Id));
 		}
 
 		/// <summary>
@@ -361,7 +339,7 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="Id">A list of values for Ids for which to query</param>
 		/// <returns>A MongoQuery criteria for the equality of the specified Id.</returns>
-		protected internal static IMongoQuery QueryCriteria_ById(IEnumerable<string> IdList) {
+		protected internal static IMongoQuery QueryCriteria_ById(IEnumerable<object> IdList) {
 			if (IdList == null) {
 				logger.Error("Attempted to call QueryCriteriaById with a null Id");
 				throw new ArgumentNullException("Id", "Cannot QueryCriteriaById with a null Id");
@@ -388,7 +366,7 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="id"></param>
 		/// <returns></returns>
-		protected internal SafeModeResult deleteById(string id) {
+		protected internal SafeModeResult deleteById(object id) {
 			if (id == null) {
 				logger.Error("Delete() called without specifying an Id");
 				throw new ArgumentNullException("Id must be specified for deletion.");
