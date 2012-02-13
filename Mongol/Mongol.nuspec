@@ -16,6 +16,7 @@ See the License for the specific language governing permissions and
 <package >
   <metadata>
     <id>Mongol</id>
+    <title>Mongol</title>
     <authors>pmarkert,rcaskey,jhaygood</authors>
     <version>$version$</version>
     <licenseUrl>http://www.apache.org/licenses/LICENSE-2.0</licenseUrl>

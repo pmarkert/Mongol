@@ -50,6 +50,7 @@ Mongol provides a few features on top of the MongoDB driver, all of which can be
 Features offered by Mongol:
 
 * A simple [Repository Pattern](http://martinfowler.com/eaaCatalog/repository.html) wrapper for MongoDB collections exposing the most common CRUD functionality for strongly typed documents 
+
 ```
 internal class PersonManager : RecordManager<Person> {
     // Public methods inherited from RecordManager<T>
@@ -76,6 +77,7 @@ internal class PersonManager : RecordManager<Person> {
 }
 ```
 * Lambda-based property-name resolution for building MongoDB queries without using magic strings 
+
 ```
 public IEnumerable<Person> GetByLastName(string LastName) {
   // Instead of magic strings like this:
@@ -89,6 +91,7 @@ public IEnumerable<Person> GetByLastName(string LastName) {
 ```
 
 * Simple connection-string configuration using a single appSetting
+
 ```
 <appSettings>
   <add key="Mongol.Url" value="mongodb://localhost/test?safe=true"/>
