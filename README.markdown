@@ -6,14 +6,14 @@ The easiest way to get started with Mongol is to
 
 1. Add Mongol to your project using [Nuget](http://docs.nuget.org/docs/start-here/managing-nuget-packages-using-the-dialog)
 2. Add the **Mongol.Url** appSetting to your application .config
-```xml
+```
 <appSettings>
     <add key="Mongol.Url" value="mongodb://hostname/database?options" /> 
 </appSettings>
 ```
 3. Create the classes that you wish to store and retrieve with MongoDB.  This can be done of two ways:
     * Create your own POCO classes and add the [BsonId] attribute to your uniquely identifying field if it isn't  called Id, id, or _id.
-```c#
+```
 public class Person {
     [BsonId]
     public Guid PersonId { get; set; }
@@ -21,14 +21,14 @@ public class Person {
 }
 ```
     * Inherit from **_Mongol.Record_** or **_Mongol.TimestampedRecord_** which already has
-```c#
+```
 [BsonId(IdGenerator = typeof(StringObjectIdGenerator))]
 public virtual string Id { get; set; }
 ```
 
 Now you can create an instance of **RecordManager\<Person\>** and go to town.  For example:
 
-```c#
+```
     var personManager = new RecordManager<Person>();
     Person person = personManager.GetById(person.Id);
     person.Name = "Updated Name";
@@ -50,7 +50,7 @@ Mongol provides a few features on top of the MongoDB driver, all of which can be
 Features offered by Mongol:
 
 * A simple [Repository Pattern](http://martinfowler.com/eaaCatalog/repository.html) wrapper for MongoDB collections exposing the most common CRUD functionality for strongly typed documents 
-```c#
+```
 internal class PersonManager : RecordManager<Person> {
     // Public methods inherited from RecordManager<T>
     IQueryable<T> AsQueryable { get; }
@@ -76,7 +76,7 @@ internal class PersonManager : RecordManager<Person> {
 }
 ```
 * Lambda-based property-name resolution for building MongoDB queries without using magic strings 
-```c#
+```
 public IEnumerable<Person> GetByLastName(string LastName) {
   // Instead of magic strings like this:
   return Find(Query.EQ("LastName", LastName));
@@ -89,7 +89,7 @@ public IEnumerable<Person> GetByLastName(string LastName) {
 ```
 
 * Simple connection-string configuration using a single appSetting
-```xml
+```
 <appSettings>
   <add key="Mongol.Url" value="mongodb://localhost/test?safe=true"/>
 </appSettings>
@@ -97,13 +97,13 @@ public IEnumerable<Person> GetByLastName(string LastName) {
 
 * A manager factory to encapsulate/cache construction of new repository instances
 
-```c#
+```
 PersonManager personManager = ManagerFactory.GetManager<PersonManager>();
 ```
 
 * A base-class from which strongly-typed documents can optionally inherit, providing string-typed Ids and automatic **_id** field population if saved as **null**.
 
-```c#
+```
 public class Person : Record {
   public string FirstName { get; set; }
   public string LastName { get; set; }
@@ -118,7 +118,7 @@ public virtual string Id { get; set; }
 
 * Another base-class (and interface) from which documents can inherit providing automatic maintenance of Creation/Modification timestamps.
 
-```c#
+```
 public class Person : ITimeStampedRecord {
   #region ITimeStampedRecord Members
   public DateTime CreatedDate { get; set; }
