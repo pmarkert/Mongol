@@ -1,4 +1,17 @@
-﻿using System;
+﻿/* Copyright 2012 Ephisys Inc.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -23,7 +36,7 @@ namespace Mongol {
 	/// Repository gateway to a single collection named after the type <typeparamref name="T"/>
 	/// </summary>
 	/// <typeparam name="T">The type of object to be stored in the collection</typeparam>
-	public abstract class RecordManager<T> : RecordManager, IRecordManager<T> where T : class {
+	public class RecordManager<T> : RecordManager, IRecordManager<T> where T : class {
 		private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(String.Format("{0}.RecordManager<{1}>", System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Namespace, typeof(T).Name));
 
 		/// <summary>
@@ -41,7 +54,7 @@ namespace Mongol {
 		/// <summary>
 		/// Creates a new RecordManager
 		/// </summary>
-		protected RecordManager() {
+		public RecordManager() {
 			if (!Initialized) {
 				lock (typeof(RecordManager<T>)) {
 					if (!Initialized) {
@@ -54,9 +67,8 @@ namespace Mongol {
 		/// <summary>
 		/// The Linq Queryable for the collection
 		/// </summary>
-		public virtual IQueryable<T> All {
+		public virtual IQueryable<T> AsQueryable {
 			get {
-				logger.Debug("All");
 				return collection.AsQueryable();
 			}
 		}
@@ -66,7 +78,13 @@ namespace Mongol {
 		/// </summary>
 		public virtual void DeleteById(object id) {
 			logger.DebugFormat("Delete({0})", id);
-			deleteById(id);
+			if (id == null) {
+				logger.Error("Delete() called without specifying an Id");
+				throw new ArgumentNullException("Id must be specified for deletion.");
+			}
+			else {
+				collection.Remove(QueryCriteria_ById(id));
+			}
 		}
 
 		/// <summary>
@@ -106,7 +124,6 @@ namespace Mongol {
 				logger.Error("BatchInsert() called with null value for records enumeration.");
 				throw new ArgumentNullException("records");
 			}
-			IEnumerable<SafeModeResult> result = null;
 			if (records == null) {
 				logger.Warn("Attempted to InsertMany on null (not empty, but null) collection. Nothing done.");
 			}
@@ -117,7 +134,7 @@ namespace Mongol {
 					OnBeforeSave(record);
 				}
 				if (materializedItems.Count > 0) {
-					result = collection.InsertBatch(materializedItems);
+					collection.InsertBatch(materializedItems);
 				}
 				foreach (T record in materializedItems) {
 					OnAfterSave(record);
@@ -128,7 +145,7 @@ namespace Mongol {
 		/// <summary>
 		/// Saves a record to the collection (either as an insert or update).  Replaces the entire record if updated.
 		/// </summary>
-		/// <returns>true if the record was inserted, false if it was overwritten.</returns>
+		/// <returns>true if the record was inserted, false if it was overwritten or if the connection is not using SafeMode.</returns>
 		public virtual bool Save(T record) {
 			if (record == null) {
 				logger.Error("Cannot Save a null record.");
@@ -139,7 +156,7 @@ namespace Mongol {
 				OnBeforeSave(record);
 				var safeModeResult = collection.Save(record);
 				OnAfterSave(record);
-				return !safeModeResult.UpdatedExisting;
+				return safeModeResult == null || !safeModeResult.UpdatedExisting;
 			}
 		}
 
@@ -170,7 +187,10 @@ namespace Mongol {
 		/// <summary>
 		/// Executes a search query against the collection, optionally applying a sort, skip, and limit.
 		/// </summary>
-		/// <remarks>Use common sense about indexing common queries, especially for sizeable collections.</remarks>
+		/// <remarks>
+		/// Use common sense about indexing common queries, especially for sizeable collections. 
+		/// It is simpler to set the basic cursor options via parameters than multiple lines to set options using the standard driver.
+		/// </remarks>
 		protected internal virtual IEnumerable<T> Find(IMongoQuery criteria, IMongoSortBy sort = null, int? skip = null, int? limit = null) {
 			logger.DebugFormat("Find({0},{1},{2},{3})", criteria, sort, skip, limit);
 			return find(criteria, sort, skip, limit);
@@ -276,13 +296,19 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="update">The update operation to apply to the matched items.</param>
 		/// <param name="asUpsert">If true, MongoDB will attempt to create new items based upon the query values passed in.</param>
-		/// <returns>The number of items updated.</returns>
+		/// <returns>The number of items updated (Always 0 if the connection is not using SafeMode).</returns>
 		protected internal virtual long UpdateMany(IMongoQuery criteria, UpdateBuilder update, bool asUpsert = false) {
 			logger.DebugFormat("UpdateMany({0},{1},{2})", criteria, update, asUpsert);
 			if (typeof(ITimeStampedRecord).IsAssignableFrom(typeof(T))) {
 				update = update.Combine(Update.Set(PropertyNameResolver<ITimeStampedRecord>.Resolve(x => x.ModifiedDate), DateTime.UtcNow));
 			}
-			return collection.Update(criteria, update, asUpsert ? UpdateFlags.Multi | UpdateFlags.Upsert : UpdateFlags.Multi).DocumentsAffected;
+			var result = collection.Update(criteria, update, asUpsert ? UpdateFlags.Multi | UpdateFlags.Upsert : UpdateFlags.Multi);
+			if (result == null) {
+				return 0;
+			}
+			else {
+				return result.DocumentsAffected;
+			}
 		}
 
 		/// <summary>
@@ -295,7 +321,13 @@ namespace Mongol {
 				logger.Error("Attempted to call DeleteMany with a null query.");
 				throw new ArgumentNullException("query", "Cannot call DeleteMany with a null query");
 			}
-			return collection.Remove(criteria).DocumentsAffected;
+			var result = collection.Remove(criteria);
+			if (result == null) {
+				return 0;
+			}
+			else {
+				return result.DocumentsAffected;
+			}
 		}
 
 		/// <summary>
@@ -347,6 +379,9 @@ namespace Mongol {
 			return Query.In(ID_FIELD, BsonArray.Create(IdList));
 		}
 
+		/// <summary>
+		/// Internal implementation Called by other functions to avoid duplicate logging.
+		/// </summary>
 		protected internal IEnumerable<T> find(IMongoQuery criteria, IMongoSortBy sortBy = null, int? skip = null, int? limit = null) {
 			MongoCursor<T> cursor = collection.Find(criteria);
 			if (sortBy != null) {
@@ -359,21 +394,6 @@ namespace Mongol {
 				cursor.SetLimit(limit.Value);
 			}
 			return cursor;
-		}
-
-		/// <summary>
-		/// 
-		/// </summary>
-		/// <param name="id"></param>
-		/// <returns></returns>
-		protected internal SafeModeResult deleteById(object id) {
-			if (id == null) {
-				logger.Error("Delete() called without specifying an Id");
-				throw new ArgumentNullException("Id must be specified for deletion.");
-			}
-			else {
-				return collection.Remove(QueryCriteria_ById(id));
-			}
 		}
 	}
 }

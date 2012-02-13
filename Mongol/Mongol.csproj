@@ -58,12 +58,12 @@
     <Compile Include="ITimeStampedRecord.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="MaintainDateAttributes.cs" />
     <Compile Include="CachingRecordManager.cs" />
     <Compile Include="IMongoQueryExtensions.cs" />
     <Compile Include="IRecordManager.cs" />
     <Compile Include="ManagerFactory.cs" />
     <Compile Include="Connection.cs" />
+    <Compile Include="MongoCollectionAttribute.cs" />
     <Compile Include="MongoDatabaseExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Record.cs" />
