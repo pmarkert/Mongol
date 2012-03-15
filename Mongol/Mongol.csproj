@@ -63,7 +63,7 @@
     <Compile Include="IRecordManager.cs" />
     <Compile Include="ManagerFactory.cs" />
     <Compile Include="Connection.cs" />
-    <Compile Include="MongoCollectionAttribute.cs" />
+    <Compile Include="MongoCollectionNameAttribute.cs" />
     <Compile Include="MongoDatabaseExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Record.cs" />
