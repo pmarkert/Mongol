@@ -21,7 +21,14 @@ namespace Mongol {
 	/// By implementing this interface, Records saved with a RecordManager will have these dates automatically maintained.
 	/// </summary>
 	public interface ITimeStampedRecord {
+		/// <summary>
+		/// The time/date the document was originally created.
+		/// </summary>
 		DateTime CreatedDate { get; set; }
+
+		/// <summary>
+		/// The time/date the document was most recently modified.
+		/// </summary>
 		DateTime ModifiedDate { get; set; }
 	}
 }

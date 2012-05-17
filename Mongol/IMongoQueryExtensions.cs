@@ -23,10 +23,16 @@ namespace Mongol {
 	/// These are convenience extension methods for chaining together multiple Mongo Query Criteria with a fluent syntax.
 	/// </summary>
 	public static class IMongoQueryExtensions {
+		/// <summary>
+		/// Joins the two queries with a $and operator
+		/// </summary>
 		public static IMongoQuery And(this IMongoQuery left, IMongoQuery right) {
 			return Query.And(left, right);
 		}
 
+		/// <summary>
+		/// Joins the two queries with an $or operator
+		/// </summary>
 		public static IMongoQuery Or(this IMongoQuery left, IMongoQuery right) {
 			return Query.Or(left, right);
 		}

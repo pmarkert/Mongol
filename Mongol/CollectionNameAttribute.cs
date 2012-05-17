@@ -17,11 +17,21 @@ using System.Linq;
 using System.Text;
 
 namespace Mongol {
+	/// <summary>
+	/// Used to override the name of the collection managed by the RecordManager.
+	/// </summary>
 	[AttributeUsage(AttributeTargets.Class)]
-	public class MongoCollectionNameAttribute : Attribute {
+	public class CollectionNameAttribute : Attribute {
+		/// <summary>
+		/// The name of the collection to be used.
+		/// </summary>
 		public string CollectionName { get; set; }
 
-		public MongoCollectionNameAttribute(string CollectionName) {
+		/// <summary>
+		/// Initializes a new instance of the attribute, specifying the collection name.
+		/// </summary>
+		/// <param name="CollectionName"></param>
+		public CollectionNameAttribute(string CollectionName) {
 			this.CollectionName = CollectionName;
 		}
 	}

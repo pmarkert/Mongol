@@ -18,8 +18,9 @@ using System.Linq.Expressions;
 using MongoDB.Bson;
 using MongoDB.Driver.Builders;
 using MongoDB.Driver;
-using FluentMongo.Linq;
 using MongoDB.Bson.Serialization;
+using MongoDB.Driver.Linq;
+using Common.Logging;
 
 namespace Mongol {
 	/// <summary>
@@ -27,9 +28,11 @@ namespace Mongol {
 	/// </summary>
 	public abstract class RecordManager {
 		/// <summary>
-		/// The field name MongoDB uses for the _id field.
+		/// The field name MongoDB uses for the _id field.  Useful when specifying query or update operations against the ID field to avoid duplicating "magic string" constants.
 		/// </summary>
 		public const string ID_FIELD = "_id";
+		protected const string AGGREGATE_COMMAND = "aggregate";
+		protected const string PIPELINE_PARAMETER = "pipeline";
 	}
 
 	/// <summary>
@@ -37,13 +40,48 @@ namespace Mongol {
 	/// </summary>
 	/// <typeparam name="T">The type of object to be stored in the collection</typeparam>
 	public class RecordManager<T> : RecordManager, IRecordManager<T> where T : class {
-		private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(String.Format("{0}.RecordManager<{1}>", System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Namespace, typeof(T).Name));
+		private static readonly ILog logger = LogManager.GetCurrentClassLogger();
+
+		private void SetupCollection(string collectionName, string connectionName) {
+			var type = typeof(T);
+			if (connectionName != null) {
+				this.ConnectionName = connectionName;
+			}
+			else {
+				var connectionAttribute = type.GetCustomAttributes(typeof(ConnectionNameAttribute), true).Cast<ConnectionNameAttribute>().FirstOrDefault();
+				if (connectionAttribute != null) {
+					this.ConnectionName = connectionAttribute.ConnectionName;
+				}
+			}
+			var connection = Connection.GetInstance(ConnectionName);
+			if (collectionName == null) {
+				var collectionAttribute = type.GetCustomAttributes(typeof(CollectionNameAttribute), true).Cast<CollectionNameAttribute>().FirstOrDefault();
+				if (collectionAttribute != null) {
+					collectionName = collectionAttribute.CollectionName;
+				}
+			}
+			if(collectionName!=null) {
+				collection = connection.GetCollection<T>(collectionName);
+			}
+			else {
+				collection = connection.GetCollection<T>();
+			}
+		}
+
+		/// <summary>
+		/// The name of the Mongol connection to use. 
+		/// </summary>
+		public string ConnectionName {
+			get;
+			protected set;
+		}
 
 		/// <summary>
 		/// The underlying MongoDB collection that the RecordManager encapsulates
 		/// </summary>
 		protected virtual MongoCollection<T> collection {
-			get { return Connection.Instance.GetCollection<T>(); }
+			get;
+			set;
 		}
 
 		/// <summary>
@@ -54,7 +92,8 @@ namespace Mongol {
 		/// <summary>
 		/// Creates a new RecordManager
 		/// </summary>
-		public RecordManager() {
+		public RecordManager(string collectionName = null, string connectionName = null) {
+			SetupCollection(collectionName, connectionName);
 			if (!Initialized) {
 				lock (typeof(RecordManager<T>)) {
 					if (!Initialized) {
@@ -77,7 +116,7 @@ namespace Mongol {
 		/// Deletes a single record from the collection by id.
 		/// </summary>
 		public virtual void DeleteById(object id) {
-			logger.DebugFormat("Delete({0})", id);
+			logger.Debug(m => m("Delete({0})", id));
 			if (id == null) {
 				logger.Error("Delete() called without specifying an Id");
 				throw new ArgumentNullException("Id must be specified for deletion.");
@@ -91,7 +130,7 @@ namespace Mongol {
 		/// Retrieves a single record from the collection by Id
 		/// </summary>
 		public virtual T GetById(object id) {
-			logger.DebugFormat("GetById({0})", id);
+			logger.Debug(m => m("GetById({0})", id));
 			if (id == null) {
 				logger.Error("GetById() called with null id.");
 				throw new ArgumentNullException("id");
@@ -105,12 +144,13 @@ namespace Mongol {
 		/// <remarks>Useful to solve 1-N problems on psuedo-joins. The list of ids should not contain an unreasonable number of items (Mongo has a limit of 4MB per query document).</remarks>
 		/// <param name="ids">The list of Id's for which to find records.</param>
 		public virtual IEnumerable<T> GetManyByIds(IEnumerable<object> ids) {
-			logger.Debug("GetManyByIds(ids)");
 			if (ids == null) {
 				logger.Error("GetById() called with null value for ids enumeration.");
 				throw new ArgumentNullException("ids");
 			}
-			return collection.Find(Query.In(ID_FIELD, new BsonArray(ids)));
+			var array = ids.ToArray();
+			logger.Debug(m => m("GetManyByIds(ListOfIds.Length=" + array.Length + ")"));
+			return collection.Find(Query.In(ID_FIELD, new BsonArray(array)));
 		}
 
 		/// <summary>
@@ -119,7 +159,7 @@ namespace Mongol {
 		/// <remarks>The number of items cannot be too large because there is a size-limit on messages, but it's pretty reasonable.</remarks>
 		/// <returns>The number of items that were Inserted.</returns>
 		public virtual void BatchInsert(IEnumerable<T> records) {
-			logger.Debug("InsertMany(records)");
+			logger.Debug(m => m("InsertMany(records)"));
 			if (records == null) {
 				logger.Error("BatchInsert() called with null value for records enumeration.");
 				throw new ArgumentNullException("records");
@@ -128,8 +168,9 @@ namespace Mongol {
 				logger.Warn("Attempted to InsertMany on null (not empty, but null) collection. Nothing done.");
 			}
 			else {
-				logger.Info("InsertMany called for " + records.Count() + " records.");
-				List<T> materializedItems = records.Where(r => r != null).ToList();
+				var array = records.ToArray();
+				List<T> materializedItems = array.Where(r => r != null).ToList();
+				logger.Info("InsertMany called for " + materializedItems.Count + "non-null items");
 				foreach (T record in materializedItems) {
 					OnBeforeSave(record);
 				}
@@ -152,7 +193,7 @@ namespace Mongol {
 				throw new ArgumentNullException("record", "Cannot save a null record.");
 			}
 			else {
-				logger.DebugFormat("Save({0})", record);
+				logger.Debug(m => m("Save({0})", record));
 				OnBeforeSave(record);
 				var safeModeResult = collection.Save(record);
 				OnAfterSave(record);
@@ -164,7 +205,7 @@ namespace Mongol {
 		/// Override this method to do any once-per application run initialization (such as ensuring indexes), setting special ClassMap conventions, collection cleanup, etc.
 		/// </summary>
 		protected internal virtual void Initialize() {
-			logger.Debug("Initialize()");
+			logger.Debug(m => m("Initialize()"));
 		}
 
 		/// <summary>
@@ -180,7 +221,7 @@ namespace Mongol {
 		/// <param name="criteria">An optional query to filter the counted items.</param>
 		/// <returns>The number of items in the collection matching the filter.</returns>
 		protected internal long Count(IMongoQuery criteria = null) {
-			logger.DebugFormat("Count({0})", criteria);
+			logger.Debug(m => m("Count({0})", criteria));
 			return collection.Count(criteria);
 		}
 
@@ -192,7 +233,7 @@ namespace Mongol {
 		/// It is simpler to set the basic cursor options via parameters than multiple lines to set options using the standard driver.
 		/// </remarks>
 		protected internal virtual IEnumerable<T> Find(IMongoQuery criteria, IMongoSortBy sort = null, int? skip = null, int? limit = null) {
-			logger.DebugFormat("Find({0},{1},{2},{3})", criteria, sort, skip, limit);
+			logger.Debug(m => m("Find({0},{1},{2},{3})", criteria, sort, skip, limit));
 			return find(criteria, sort, skip, limit);
 		}
 
@@ -201,7 +242,7 @@ namespace Mongol {
 		/// </summary>
 		/// <returns>The item or null if no matches are found.</returns>
 		protected internal virtual T FindSingle(IMongoQuery criteria) {
-			logger.DebugFormat("FindSingle({0})", criteria);
+			logger.Debug(m => m("FindSingle({0})", criteria));
 			return find(criteria).SingleOrDefault();
 		}
 
@@ -244,16 +285,16 @@ namespace Mongol {
 		/// <param name="returnModifiedVersion">If true, returns the post-modification version of the item, otherwise the item as it was before modification.  Default=true</param>
 		/// <remarks>Useful for managing concurrency across multiple processes such as a Queue.  Can also be used to setup items that go through a workflow.</remarks>
 		protected internal virtual T FindOneAndModify(IMongoQuery criteria, IMongoUpdate update, IMongoSortBy sortBy = null, bool returnModifiedVersion = true) {
-			logger.DebugFormat("FindAndModify({0},{1},{2},{3})", criteria, update, sortBy, returnModifiedVersion);
+			logger.Debug(m => m("FindAndModify({0},{1},{2},{3})", criteria, update, sortBy, returnModifiedVersion));
 			return collection.FindAndModify(criteria, sortBy, update, returnModifiedVersion).GetModifiedDocumentAs<T>();
 		}
 
 		/// <summary>
 		/// Automically finds and removes at most one item from the collection, returning the item.
 		/// </summary>
-		/// <param name="orderBy">The sort order to use (the first matching item is used)</param>
+		/// <param name="sortBy">The sort order to use (the first matching item is used)</param>
 		protected internal virtual T FindOneAndRemove(IMongoQuery criteria, IMongoSortBy sortBy = null) {
-			logger.DebugFormat("FindOneAndRemove({0},{1})", criteria, sortBy);
+			logger.Debug(m => m("FindOneAndRemove({0},{1})", criteria, sortBy));
 			var removeResult = collection.FindAndRemove(criteria, sortBy);
 			if (removeResult.ModifiedDocument != null) {
 				return removeResult.GetModifiedDocumentAs<T>();
@@ -271,7 +312,7 @@ namespace Mongol {
 		/// <param name="update">The update command to modify the items.</param>
 		/// <param name="returnModifiedVersion">If true, returns the post-modification version of the item, otherwise the item as it was before modification. Default=true</param>
 		protected internal IEnumerable<T> EnumerateAndModify(IMongoQuery criteria, IMongoUpdate update, IMongoSortBy sortBy = null, bool returnModifiedVersion = true) {
-			logger.DebugFormat("EnumerateAndModify({0},{1},{2},{3})", criteria, update, sortBy, returnModifiedVersion);
+			logger.Debug(m => m("EnumerateAndModify({0},{1},{2},{3})", criteria, update, sortBy, returnModifiedVersion));
 			T result;
 			while ((result = FindOneAndModify(criteria, update, sortBy, returnModifiedVersion)) != null) {
 				yield return result;
@@ -284,7 +325,7 @@ namespace Mongol {
 		/// </summary>
 		/// <param name="criteria">The criteria for which to find items</param>
 		protected internal IEnumerable<T> EnumerateAndRemove(IMongoQuery criteria, IMongoSortBy sortBy = null) {
-			logger.DebugFormat("EnumerateAndRemove({0},{1})", criteria, sortBy);
+			logger.Debug(m => m("EnumerateAndRemove({0},{1})", criteria, sortBy));
 			T result;
 			while ((result = FindOneAndRemove(criteria, sortBy)) != null) {
 				yield return result;
@@ -298,7 +339,7 @@ namespace Mongol {
 		/// <param name="asUpsert">If true, MongoDB will attempt to create new items based upon the query values passed in.</param>
 		/// <returns>The number of items updated (Always 0 if the connection is not using SafeMode).</returns>
 		protected internal virtual long UpdateMany(IMongoQuery criteria, UpdateBuilder update, bool asUpsert = false) {
-			logger.DebugFormat("UpdateMany({0},{1},{2})", criteria, update, asUpsert);
+			logger.Debug(m => m("UpdateMany({0},{1},{2})", criteria, update, asUpsert));
 			if (typeof(ITimeStampedRecord).IsAssignableFrom(typeof(T))) {
 				update = update.Combine(Update.Set(PropertyNameResolver<ITimeStampedRecord>.Resolve(x => x.ModifiedDate), DateTime.UtcNow));
 			}
@@ -316,7 +357,7 @@ namespace Mongol {
 		/// </summary>
 		/// <returns>The number of documents deleted.</returns>
 		protected internal virtual long DeleteMany(IMongoQuery criteria) {
-			logger.DebugFormat("DeleteMany({0})", criteria);
+			logger.Debug(m => m("DeleteMany({0})", criteria));
 			if (criteria == null) {
 				logger.Error("Attempted to call DeleteMany with a null query.");
 				throw new ArgumentNullException("query", "Cannot call DeleteMany with a null query");
@@ -349,7 +390,7 @@ namespace Mongol {
 		/// </summary>
 		/// <remarks>Can be called multiple times in-expensively.</remarks>
 		protected internal virtual void EnsureIndex(IMongoIndexKeys keys, IMongoIndexOptions options) {
-			logger.DebugFormat("EnsureIndex({0},{1})", keys, options);
+			logger.Debug(m => m("EnsureIndex({0},{1})", keys, options));
 			collection.EnsureIndex(keys, options);
 		}
 
@@ -394,6 +435,51 @@ namespace Mongol {
 				cursor.SetLimit(limit.Value);
 			}
 			return cursor;
+		}
+
+		/// <summary>
+		/// Executes an aggregation command using the specified pipeline
+		/// </summary>
+		/// <param name="pipeline">A params array of BsonDocuments representing aggregation commands</param>
+		/// <remarks>Use the Mongol.Aggregation class convenience methods to generate pipeline commands</remarks>
+		/// <returns>An enumerable list of the aggregation results</returns>
+		protected IEnumerable<BsonDocument> Aggregate(params BsonDocument[] pipeline) {
+			return Aggregate(((IEnumerable<BsonDocument>)pipeline));
+		}
+
+		/// <summary>
+		/// Executes an aggregation command using the specified pipeline
+		/// </summary>
+		/// <param name="pipeline">An array of BsonDocuments representing aggregation commands</param>
+		/// <remarks>Use the Mongol.Aggregation class convenience methods to generate pipeline commands</remarks>
+		/// <returns>An enumerable list of the aggregation results</returns>
+		protected IEnumerable<BsonDocument> Aggregate(IEnumerable<BsonDocument> pipeline) {
+			CommandDocument docAggregationCommand = new CommandDocument() {
+            				{ AGGREGATE_COMMAND, collection.Name },
+            				{ PIPELINE_PARAMETER, BsonArray.Create(pipeline.Where(x => x!=null)) }
+            			};
+			var response = collection.Database.RunCommand(docAggregationCommand);
+			return response.Response.AsBsonDocument.GetValue("result").AsBsonArray.Select(x => x.AsBsonDocument);
+		}
+
+		/// <summary>
+		/// Executes an aggregation command using the specified pipeline
+		/// </summary>
+		/// <param name="pipeline">A params array of BsonDocuments representing aggregation commands</param>
+		/// <remarks>Use the Mongol.Aggregation class convenience methods to generate pipeline commands</remarks>
+		/// <returns>An strongly typed enumerable of the aggregation results</returns>
+		protected IEnumerable<T> Aggregate<T>(params BsonDocument[] pipeline) {
+			return Aggregate((IEnumerable<BsonDocument>)pipeline).Select(x => BsonSerializer.Deserialize(x.AsBsonDocument, typeof(T))).Cast<T>();
+		}
+
+		/// <summary>
+		/// Executes an aggregation command using the specified pipeline
+		/// </summary>
+		/// <param name="pipeline">A params array of BsonDocuments representing aggregation commands</param>
+		/// <remarks>Use the Mongol.Aggregation class convenience methods to generate pipeline commands</remarks>
+		/// <returns>A strongly typed enumerable of the aggregation results</returns>
+		protected IEnumerable<T> Aggregate<T>(IEnumerable<BsonDocument> pipeline) {
+			return Aggregate(pipeline).Select(x => BsonSerializer.Deserialize(x.AsBsonDocument, typeof(T))).Cast<T>();
 		}
 	}
 }

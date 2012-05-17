@@ -21,7 +21,8 @@ using MongoDB.Bson.Serialization.IdGenerators;
 
 namespace Mongol {
 	/// <summary>
-	/// Base class from which all record entities must inherit.
+	/// Suitable class from which sub-classes can inherit to represent a business entity (a single document in a MongoDB collection).  Provides automatic string-based Id's with associated ObjectId generator, 
+	/// equality comparison based upon Id matching, and GetHashCode() implementation.
 	/// </summary>
 	public abstract class Record {
 		/// <summary>
@@ -34,7 +35,7 @@ namespace Mongol {
 		}
 
 		/// <summary>
-		/// For this implementation, two records are equal if they have non-null id's that are equal.
+		/// Considers two records are equal if and only if they have equal, non-null id's.
 		/// </summary>
 		/// <param name="obj"></param>
 		/// <returns></returns>

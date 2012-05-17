@@ -17,8 +17,18 @@ using System.Linq;
 using System.Text;
 
 namespace Mongol {
+	/// <summary>
+	/// Suitable class from which sub-classes can inherit to represent a business entity (a single document in a MongoDB collection) that has automatic Created/Modified Date maintenance applied.
+	/// </summary>
 	public class TimeStampedRecord : Record, ITimeStampedRecord {
+		/// <summary>
+		/// The time/date the document was originally created.
+		/// </summary>
 		public DateTime CreatedDate { get; set; }
+
+		/// <summary>
+		/// The time/date the document was most recently modified.
+		/// </summary>
 		public DateTime ModifiedDate { get; set; }
 	}
 }

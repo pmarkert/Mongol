@@ -29,8 +29,12 @@ See the License for the specific language governing permissions and
     2. Set Mongol.Url appSetting with mongodb:// url
     3. Create POCO classes, and mark with [BsonId]
     4. Use instances of RecordManager&lt;TClass&gt; to perform basic repository operations.
-    5. Extend RecordManager&lt;TClass&gt; to encapsulate operations for Query/Update using inherited methods, or directly access the collection.</summary>
+    
+		Extend RecordManager&lt;TClass&gt; to encapsulate operations for Query/Update using inherited methods, or to directly access the collection.</summary>
     <copyright>Copyright 2012</copyright>
     <tags>mongo mongodb repository document-oriented nosql recordmanager record</tags>
   </metadata>
+  <files>
+    <file src="..\..\Nuget\readme.txt" /> 
+  </files>
 </package>

@@ -20,7 +20,18 @@ using System.Linq.Expressions;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Mongol {
+	/// <summary>
+	/// The PropertyNameResolver static class provides utility methods to generate strings representing field-member access for use in MongoDB query and update operations.
+	/// This allows you to use lambda expressions to represent the properties you wish to use for query or update instead of coding literal string values to represent those members.
+	/// </summary>
+	/// <typeparam name="T"></typeparam>
 	public static class PropertyNameResolver<T> {
+		/// <summary>
+		/// Resolves a member-access expression into a dotted-string suitable for using in a MongoDB query or update statement.
+		/// </summary>
+		/// <typeparam name="S"></typeparam>
+		/// <param name="expression"></param>
+		/// <returns></returns>
 		public static string Resolve<S>(Expression<Func<T, S>> expression) {
 			MemberExpression member = expression.Body as MemberExpression;
 			if (member == null) {
@@ -43,7 +54,7 @@ namespace Mongol {
 				}
 			}
 			MethodCallExpression methodCallExpression = expression as MethodCallExpression;
-			if (methodCallExpression != null && methodCallExpression.Method.DeclaringType == typeof(System.Linq.Enumerable) && methodCallExpression.Method.Name == "Single") {
+			if (methodCallExpression != null && ((methodCallExpression.Method.DeclaringType == typeof(System.Linq.Enumerable) && (methodCallExpression.Method.Name == "Single")) || methodCallExpression.Method.Name == "Member")) {
 				return ResolveRecursiveMemberName(methodCallExpression.Arguments[0]);
 			}
 			else {

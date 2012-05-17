@@ -8,7 +8,7 @@ The easiest way to get started with Mongol is to
 2. Add the **Mongol.Url** appSetting to your application .config
 ```
 <appSettings>
-    <add key="Mongol.Url" value="mongodb://hostname/database?options" /> 
+    <add key="Mongol.Url" value="mongodb://hostname/database" /> 
 </appSettings>
 ```
 3. Create the classes that you wish to store and retrieve with MongoDB.  This can be done of two ways:
@@ -20,7 +20,7 @@ public class Person {
     public string Name { get; set; }
 }
 ```
-    * Inherit from **_Mongol.Record_** or **_Mongol.TimestampedRecord_** which already has
+    * Inherit from **_Mongol.Record_** or **_Mongol.TimestampedRecord_** which already has an Id with an associated autogenerator
 ```
 [BsonId(IdGenerator = typeof(StringObjectIdGenerator))]
 public virtual string Id { get; set; }
@@ -37,7 +37,7 @@ Now you can create an instance of **RecordManager\<Person\>** and go to town.  F
 
 ## What Mongol _does not_ do
 
-Mongol does not promise to take out your trash or walk you dog. If it improves your marriage, then it's probably because it saved you a few extra minutes at work. 
+Mongol does not promise to take out your trash or walk you dog. If it improves your marriage, then it's probably just because it saved you a few extra minutes at work. 
 
 Everything that can be done with Mongol can be done directly using the 10Gen Driver.  Mongol simply wraps some of the common operations I found myself repeating and makes some of those repetitive tasks a little bit less... repetitive... :) 
 
@@ -84,13 +84,15 @@ public IEnumerable<Person> GetByLastName(string LastName) {
   return Find(Query.EQ("LastName", LastName));
   // Use Lambdas for Compile-time safety like this:
   return Find(Query.EQ(PropertyName(p => p.LastName), LastName));
-  // Also works for collection members by using .Single()
-  string LastNameField = PropertyName(p.Children.Single().LastName; // Evaluates to "Children.LastName"
+  // Also works for collection members by using .Member()
+  string ChildLastNameField = PropertyName(p.Children.Member().LastName; // Evaluates to "Children.LastName"
   return Find(Query.EQ(LastNameField, LastName)); // [NOTE: Returns the parent document]
+  // You can find the relative properties on a child object (without the parent prefix) using .Relative(), useful for $elemMatch
+  string LastNameField = PropertyName(p.Children.Relative().LastName; // Evaluates to "LastName" (without the "Children.")
 }
 ```
 
-* Simple connection-string configuration using a single appSetting
+* Simple connection-string configuration using a single appSetting.  Mongol now also supports multiple, named connections.
 
 ```
 <appSettings>
@@ -127,5 +129,22 @@ public class Person : ITimeStampedRecord {
   public DateTime CreatedDate { get; set; }
   public DateTime ModifiedDate { get; set; }
   #endregion
+}
+```
+
+* A caching record manager to cache (by Id) retrieved instances of objects (useful for lookup collections)
+
+* A set of convenience methods for interacting with MongoDB's new Aggregation Framework.
+
+```
+... class ... : RecordManager {
+
+public Dictionary<string,int> CalculateVerseCountByBook() {
+	return base.Aggregate(
+			Aggregation.Group(
+				Aggregation.Grouping.By(PropertyName(x => x.Book)), 
+				Aggregation.Grouping.Count("Count")),
+			Aggregation.Sort(Aggregation.Sorting.By("Count", false))
+	).ToDictionary(x => x[ID_FIELD].AsString, x => x["Count"].AsInt32);
 }
 ```

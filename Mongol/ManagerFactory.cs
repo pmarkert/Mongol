@@ -17,10 +17,18 @@ using System.Linq;
 using System.Text;
 
 namespace Mongol {
+	/// <summary>
+	/// Simple instance cache for RecordManagers.
+	/// </summary>
 	public class ManagerFactory {
 
 		private static Dictionary<Type, IRecordManager> _managers = new Dictionary<Type, IRecordManager>();
 
+		/// <summary>
+		/// Retrieves an instance of the specified RecordManager from an internal cache.  Creates a new instance using the default constructor if one doesn't already exist.
+		/// </summary>
+		/// <typeparam name="TManager"></typeparam>
+		/// <returns></returns>
 		public static TManager GetManager<TManager>() where TManager : IRecordManager {
 			if (!_managers.ContainsKey(typeof(TManager))) {
 				lock (_managers) {
@@ -32,6 +40,17 @@ namespace Mongol {
 			}
 
 			return (TManager)_managers[typeof(TManager)];
+		}
+
+		/// <summary>
+		/// Allows population of a specific RecordManager instance into the cache.
+		/// </summary>
+		/// <typeparam name="TManager"></typeparam>
+		/// <param name="instance"></param>
+		public static void SetManager<TManager>(IRecordManager instance) {
+			lock (_managers) {
+				_managers[typeof(TManager)] = instance;
+			}
 		}
 	}
 }

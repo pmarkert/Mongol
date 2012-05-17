@@ -27,14 +27,7 @@ namespace Mongol {
 		/// <param name="db"></param>
 		/// <returns></returns>
 		public static MongoCollection<TDocument> GetCollection<TDocument>(this MongoDatabase db) {
-			var type = typeof(TDocument);
-			var nameAttribute = type.GetCustomAttributes(typeof(MongoCollectionNameAttribute), true).Cast<MongoCollectionNameAttribute>().FirstOrDefault();
-			if (nameAttribute != null) {
-				return db.GetCollection<TDocument>(nameAttribute.CollectionName);
-			}
-			else {
-				return db.GetCollection<TDocument>(typeof(TDocument).Name);
-			}
+			return db.GetCollection<TDocument>(typeof(TDocument).Name);
 		}
 	}
 }
